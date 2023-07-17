@@ -1,3 +1,3 @@
-.ipynb_checkpoints
-__pycache__/
-brainiak-aperture-isc-data/
+analysis/.ipynb_checkpoints
+analysis/__pycache__/
+analysis/brainiak-aperture-isc-data/
