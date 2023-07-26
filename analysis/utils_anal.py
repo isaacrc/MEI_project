@@ -61,6 +61,17 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import PredefinedSplit
 from copy import deepcopy
 
+# paths #
+top_dir = '/jukebox/graziano/coolCatIsaac/MEI'
+data_dir = top_dir + "/data"
+work_dir = data_dir + '/work'
+mask_dir = work_dir + '/masks'
+behav_dir = top_dir + '/data/behavioral'
+rois_dir = data_dir + "/rois"
+fmri_prep = data_dir + '/bids/derivatives/fmriprep'
+conf_dir = work_dir + '/confs'
+preproc_dir = work_dir + '/preproc'
+isc_dir = work_dir + '/isc_dat'
 
 
 
@@ -183,3 +194,51 @@ def intersect_mask(fmri_prep, sub, num_runs, morph):
     print("all done wit da intersextion (lol)")
 
     return epi_data
+
+
+def resample_atlas(atlas_filename, fmri_prep):
+    """
+    purpose: resample yeo to MEI data
+    input: 
+    - atlas filename
+    - location of preprocessed data for resampling
+    output: 
+    - atlas_img: the 3d brain image in numpy 2d
+    - atlas_nii: the nifti image
+    """
+    # Load  sample data for resampling
+    resamp_run = load_epi_data(fmri_prep, 'sub-007', 2, "MNI")
+    # Load parcellation
+    d = nib.load(atlas_filename)
+    atlas_nii = resample_to_img(d, resamp_run, interpolation='nearest')
+    # Get parcellation fdata
+    atlas_img = atlas_nii.get_fdata()
+    # paracellations scheme
+    print(f'count parc:{len(np.unique(atlas_nii.get_fdata()))}')
+    print("shape of atlas nii object", atlas_img.shape)
+    return atlas_nii, atlas_img
+
+def get_network_labels(num_parc, num_net):
+    """
+    purpose: get the networks labels from filename
+    input: number of parcels, number of networks
+    output: networks, network labels and network indices
+    """
+    ## get filename ##
+    label_fn = f'brainiak-aperture-isc-data/Schaefer2018_{num_parc}Parcels_{num_net}Networks_order.txt'
+    
+    with open(label_fn) as f:
+        networks = [' '.join((label.split('_')[1][0], label.split('_')[2]))
+                    for label in f.readlines()]
+
+    # Get sorted unique network labels
+    idxs = np.unique(networks, return_index=True)[1]
+    network_labels = [networks[idx] for idx in sorted(idxs)]
+
+    # Get middle index for each network for plotting -- only necessary for connectivity stuff
+    network_idxs = [int(np.median([i for i, n in enumerate(networks)
+                                    if n == network]))
+                    for network in network_labels]
+    print(f'two networks: {network_labels[:2]} \n total nets: {len(network_labels)}')
+    
+    return networks, network_labels, network_idxs
