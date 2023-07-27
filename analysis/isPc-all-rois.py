@@ -202,7 +202,7 @@ roi_dict = {}
 for net_lab in network_labels:
     print(f'start {net_lab}')
     
-    ##### Get labels associated with the target network #### 
+    ##### Get parcels associated with the target network #### 
     targ_net = (np.array(networks) == net_lab).nonzero()[0] + 1
 
     ### Get the number of voxels for the target ROI ## 
@@ -225,6 +225,7 @@ for net_lab in network_labels:
     ## create dictionaries fore each repetition
     m_rep_int = {}
     m_rep_ext = {}
+    
 
     for run in range(start_rep, end_rep + 1):
         # create external and internal dictionaries # 
@@ -383,7 +384,7 @@ for net_lab in network_labels:
     
     ### save ##
     print('saving...')
-    np.save(f'{isc_dir}/ext_isc.npz', roi_dict)
+    np.save(f'{isc_dir}/roi_bpress_ispc.npy', roi_dict)
     print('saving complete ')
     
     print(f'{net_lab } is done')
