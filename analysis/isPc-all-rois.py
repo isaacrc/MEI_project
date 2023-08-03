@@ -21,42 +21,33 @@
 import warnings
 import sys  
 import random
-# import logging
+import os
+import os.path
 
 import deepdish as dd
 import numpy as np
-
-import brainiak.eventseg.event
-import nibabel as nib
-import nilearn as nil
-# Import a function from BrainIAK to simulate fMRI data
-import brainiak.utils.fmrisim as sim  
-
-from nilearn.input_data import NiftiMasker
+import pandas as pd
 
 import scipy.io
 from scipy import stats
+from scipy.stats import stats
 from scipy.stats import norm, zscore, pearsonr
 from scipy.signal import gaussian, convolve
 
+#plotting
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.patches as patches
 import seaborn as sns 
 
-
-
-from brainiak import image, io
-from scipy.stats import stats
+# nil and nib 
 import nibabel as nib
-import numpy as np
-from matplotlib import pyplot as plt
-import pandas as pd
+import nilearn as nil
 
+from nilearn.input_data import NiftiMasker
 from nilearn import datasets, plotting
 from nilearn.plotting import plot_roi
 from nilearn.input_data import NiftiSpheresMasker
-
 from nilearn.glm.first_level import FirstLevelModel
 from nilearn.glm.first_level import make_first_level_design_matrix
 from nilearn.image import concat_imgs, resample_img, mean_img,index_img
@@ -64,30 +55,24 @@ from nilearn import image
 from nilearn import masking
 from nilearn.plotting import view_img
 from nilearn.image import resample_to_img
-
 from nilearn.image import concat_imgs, resample_img, mean_img
 from nilearn.plotting import view_img
-
-import numpy as np 
-import os
-import os.path
-import scipy.io
-import nibabel as nib
 from nilearn.input_data import NiftiMasker
 from nilearn.masking import compute_epi_mask, compute_brain_mask, unmask
-from sklearn import preprocessing
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import PredefinedSplit
-from copy import deepcopy
+from nilearn.plotting import plot_stat_map
 
 # Brainiak # 
 from brainiak import image, io 
+import brainiak.utils.fmrisim as sim  
+from brainiak import image, io
+import brainiak.eventseg.event
 from brainiak.isc import (isc, isfc, bootstrap_isc, permutation_isc,
                           timeshift_isc, phaseshift_isc,
                           compute_summary_statistic)
 from brainiak.io import load_boolean_mask, load_images
 from statsmodels.stats.multitest import multipletests
-from nilearn.plotting import plot_stat_map
+
+from brainiak.isc import squareform_isfc
 
 
 # In[3]:
@@ -148,6 +133,12 @@ num_parc = 200 # CHANGE ME
 
 num_net= 7 # CHANGE ME
 
+# ### get network labels ** CHANGE ME 
+targ_anal = 'rois' #networks 
+
+# output name
+out_name = 'dmn-fpn-dan_rois_8-2-23.npy' # CHANGE ME 
+
 # which movie repetitions
 start_rep = 1
 end_rep = 4 # CHANGE ME 
@@ -174,6 +165,10 @@ range_len = len(tr_range)
 no_interfere = len(np.where(tr_range>0)[0])
 print(f'total TRs to be extracted around the bpress: {range_len}\n total trs extracted post bpress: {no_interfere}')
 
+#######################
+### LOADING ## 
+#######################
+
 ## Load mask
 mask_img = nib.load(mask_dir + "/whole_b_bnk.nii.gz")
 #mask_img = nib.load(mask_dir + "/shaef_gm_MNI_mask.nii")
@@ -191,20 +186,29 @@ labels = dataset.labels
 atlas_nii, atlas_img = resample_atlas(atlas_filename, fmri_prep)
 
 
-# ### get network labels
-
 # Load in network labels for each parcell, parcel UNspecific network labels, and the middle parcel within each network
 networks, network_labels, network_idxs = get_network_labels(num_parc, num_net)
+
+# get ROI labels and roi_num
+roi_dic_aparc = np.load(f'{mask_dir}/roi_dic_aparc.npy', allow_pickle = True).item()
+
 
 ## create dictionary for all roi, all conditions, all runs ## 
 roi_dict = {}
 
-for net_lab in network_labels:
+for net_lab in roi_dic_aparc:
     print(f'start {net_lab}')
     
     ##### Get parcels associated with the target network #### 
-    targ_net = (np.array(networks) == net_lab).nonzero()[0] + 1
-
+    if targ_anal == 'rois':
+        targ_net = np.array([roi_dic_aparc[net_lab]])
+    elif targ_anal == 'networks':
+        targ_net = (np.array(networks) == net_lab).nonzero()[0] + 1
+    else:
+        print('error in input! yikess')
+        sys.exit()
+    
+    
     ### Get the number of voxels for the target ROI ## 
     roi_tem = np.zeros(atlas_nii.shape)
     
@@ -225,7 +229,7 @@ for net_lab in network_labels:
     ## create dictionaries fore each repetition
     m_rep_int = {}
     m_rep_ext = {}
-    
+    cond_dic = {}
 
     for run in range(start_rep, end_rep + 1):
         # create external and internal dictionaries # 
@@ -266,8 +270,6 @@ for net_lab in network_labels:
                 # Is this an internal or external run?
                 key = 'External' if (sub_num % 2 == 1 and epi_index < 3) or (sub_num % 2 == 0 and epi_index >= 3) else 'Internal'
 
-                ### only do internal for now ##
-                #if key != targ_cond: continue
 
                 ## get behavioral data
                 bpress_arr = sub_dic_behav[key][mov_name][f'run-{str(run)}']['bpress']
@@ -342,7 +344,7 @@ for net_lab in network_labels:
                 # Convert to 4d numpy array
                 f_dat_4d = bpress_nii.get_fdata()
 
-                targ_net = (np.array(networks) == net_lab).nonzero()[0] + 1
+                #targ_net = (np.array(networks) == net_lab).nonzero()[0] + 1
 
                 # loop through all TRs and get the target voxel pattern #
                 bpress_pat = np.column_stack([f_dat_4d[atlas_img == parcel, :].T
@@ -379,12 +381,13 @@ for net_lab in network_labels:
         m_rep_int[run] = internal
         print(f'finish {run}')
         
-    roi_dict[f'{net_lab}-external'] = m_rep_ext
-    roi_dict[f'{net_lab}-internal'] = m_rep_int
+    cond_dic['external'] = m_rep_ext
+    cond_dic['internal'] = m_rep_ext
+    roi_dict[net_lab] = cond_dic
     
     ### save ##
     print('saving...')
-    np.save(f'{isc_dir}/roi_bpress_ispc.npy', roi_dict)
+    np.save(f'{isc_dir}/{out_name}', roi_dict)
     print('saving complete ')
     
     print(f'{net_lab } is done')
